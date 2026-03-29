@@ -4,14 +4,30 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint .",
+    "ingest": "tsx src/scripts/ingest.ts",
+    "ingest:backfill": "tsx src/scripts/ingest.ts --mode=backfill",
+    "artifact:export": "tsx src/scripts/export-artifact.ts"
   },
   "dependencies": {
+    "@ai-sdk/google": "^3.0.53",
+    "@assistant-ui/react": "^0.12.21",
+    "@assistant-ui/react-ai-sdk": "^1.3.16",
+    "@openrouter/ai-sdk-provider": "^2.3.3",
+    "@radix-ui/react-select": "^2.2.6",
+    "ai": "^6.0.141",
+    "cheerio": "^1.2.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "fast-xml-parser": "^5.5.9",
+    "lucide-react": "^1.7.0",
     "next": "16.2.1",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "tailwind-merge": "^3.5.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -21,6 +37,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

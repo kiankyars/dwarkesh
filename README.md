@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Dwarkesh Podcast RAG
 
-## Getting Started
+Public RAG app over Dwarkesh's podcast transcripts with:
 
-First, run the development server:
+- Next.js 16 + `assistant-ui`
+- Gemini embeddings via `gemini-embedding-2-preview`
+- Artifact-backed retrieval from checked-in chunk + embedding files
+- Dynamic model picker for:
+  - fixed Gemini models
+  - all free OpenRouter text-generation models
+- Scheduled reindexing through GitHub Actions
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Local setup
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+1. Copy [`.env.example`](/Users/kian/Developer/dwarkesh/.env.example) to `.env.local`.
+2. Fill in `GEMINI_API_KEY` and `OPENROUTER_API_KEY`.
+3. Run `npm install`.
+4. Generate the local retrieval bundle with `npm run ingest:backfill`.
+5. Start the app with `npm run dev`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The first backfill writes the live index into [`data/artifacts/current`](/Users/kian/Developer/dwarkesh/data/artifacts/current).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Commands
 
-## Learn More
+- `npm run ingest`
+- `npm run ingest:backfill`
+- `npm run artifact:export`
+- `npm run lint`
+- `npm run build`
 
-To learn more about Next.js, take a look at the following resources:
+## Deployment shape
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+[render.yaml](/Users/kian/Developer/dwarkesh/render.yaml) now targets a free Render web service only. The app serves the checked-in artifact directly from disk, so it no longer needs Render Postgres or Redis to answer queries.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Automatic corpus refreshes happen in [`.github/workflows/reindex.yml`](/Users/kian/Developer/dwarkesh/.github/workflows/reindex.yml):
 
-## Deploy on Vercel
+- every 6 hours the workflow runs `npm run ingest`
+- updated files in `data/artifacts/current` are committed back to the repo
+- Render auto-deploys the new artifact on the next push
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Runtime notes
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- If a selected chat model fails upstream, the UI shows the raw provider error and the user can switch models.
+- The internal ingest/export routes still exist for manual refreshes, but GitHub Actions is the durable update path for Render because free web disks are not a persistent database.

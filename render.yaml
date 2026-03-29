@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: dwarkesh-rag-web
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: CRAWL_SECRET
+        sync: false
+      - key: ARTIFACT_DIR
+        value: /opt/render/project/src/data/artifacts
