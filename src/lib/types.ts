@@ -48,6 +48,29 @@ export type RetrievedChunk = EpisodeChunk & {
   publishedAt?: string | null;
 };
 
+export type RagContextMessage = {
+  role: "user" | "assistant" | "system";
+  content: unknown;
+};
+
+export type RagSource = {
+  id: string;
+  label: string;
+  sourceUrl: string;
+  episodeTitle: string;
+  sectionHeading?: string | null;
+  speakerNames: string[];
+  snippet: string;
+  publishedAt?: string | null;
+  score: number;
+};
+
+export type RagContextPayload = {
+  query: string;
+  injectedSystemText: string;
+  sources: RagSource[];
+};
+
 export type IndexedEpisode = {
   id: string;
   slug: string;

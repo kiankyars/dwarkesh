@@ -35,6 +35,8 @@ export function loadCustomEndpointsConfig(
         iconURL,
         modelDisplayLabel,
         customParams,
+        userProvide,
+        userProvideURL,
       } = endpoint;
       const name = normalizeEndpointName(configName);
 
@@ -43,8 +45,8 @@ export function loadCustomEndpointsConfig(
 
       customEndpointsConfig[name] = {
         type: EModelEndpoint.custom,
-        userProvide: isUserProvided(resolvedApiKey),
-        userProvideURL: isUserProvided(resolvedBaseURL),
+        userProvide: userProvide === true || isUserProvided(resolvedApiKey),
+        userProvideURL: userProvideURL === true || isUserProvided(resolvedBaseURL),
         customParams,
         modelDisplayLabel,
         iconURL,

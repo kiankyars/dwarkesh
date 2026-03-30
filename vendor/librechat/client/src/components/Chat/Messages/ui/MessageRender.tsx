@@ -5,11 +5,12 @@ import type { TMessage } from 'librechat-data-provider';
 import type { TMessageProps, TMessageIcon, TMessageChatContext } from '~/common';
 import { cn, getHeaderPrefixForScreenReader, getMessageAriaLabel } from '~/utils';
 import MessageContent from '~/components/Chat/Messages/Content/MessageContent';
-import { useLocalize, useMessageActions, useContentMetadata } from '~/hooks';
+import { useLocalize, useMessageActions, useContentMetadata, useAttachments } from '~/hooks';
 import PlaceholderRow from '~/components/Chat/Messages/ui/PlaceholderRow';
 import SiblingSwitch from '~/components/Chat/Messages/SiblingSwitch';
 import HoverButtons from '~/components/Chat/Messages/HoverButtons';
 import MessageIcon from '~/components/Chat/Messages/MessageIcon';
+import DwarkeshSources from '~/components/Chat/Messages/DwarkeshSources';
 import SubRow from '~/components/Chat/Messages/SubRow';
 import { fontSizeAtom } from '~/store/fontSize';
 import { MessageContext } from '~/Providers';
@@ -118,6 +119,10 @@ const MessageRender = memo(function MessageRender({
   });
   const fontSize = useAtomValue(fontSizeAtom);
   const maximizeChatSpace = useRecoilValue(store.maximizeChatSpace);
+  const { attachments } = useAttachments({
+    messageId: msg?.messageId,
+    attachments: msg?.attachments,
+  });
 
   const handleRegenerateMessage = useCallback(() => regenerateMessage(), [regenerateMessage]);
   const hasNoChildren = !(msg?.children?.length ?? 0);
@@ -234,6 +239,7 @@ const MessageRender = memo(function MessageRender({
               />
             </MessageContext.Provider>
           </div>
+          {!msg.isCreatedByUser && <DwarkeshSources attachments={attachments} />}
           {hasNoChildren && isSubmitting ? (
             <PlaceholderRow />
           ) : (

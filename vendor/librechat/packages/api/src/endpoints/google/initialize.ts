@@ -26,20 +26,25 @@ export async function initializeGoogle({
   void endpoint;
   const appConfig = req.config;
   const { GOOGLE_KEY, GOOGLE_REVERSE_PROXY, GOOGLE_AUTH_HEADER, PROXY } = process.env;
-  const isUserProvided = GOOGLE_KEY === 'user_provided';
+  const allowUserProvided = process.env.GOOGLE_USER_PROVIDE === 'true';
+  const requiresUserKey = GOOGLE_KEY === 'user_provided';
+  const userProvidesKey = allowUserProvided || requiresUserKey;
   const { key: expiresAt } = req.body;
 
   let userKey = null;
-  if (expiresAt && isUserProvided) {
-    checkUserKeyExpiry(expiresAt, EModelEndpoint.google);
+  if (userProvidesKey) {
+    if (expiresAt) {
+      checkUserKeyExpiry(expiresAt, EModelEndpoint.google);
+    }
     userKey = await db.getUserKey({ userId: req.user?.id, name: EModelEndpoint.google });
   }
 
   let serviceKey: Record<string, unknown> = {};
+  const envGoogleKey = GOOGLE_KEY && GOOGLE_KEY !== 'user_provided' ? GOOGLE_KEY : undefined;
 
   /** Check if GOOGLE_KEY is provided at all (including 'user_provided') */
   const isGoogleKeyProvided =
-    (GOOGLE_KEY && GOOGLE_KEY.trim() !== '') || (isUserProvided && userKey != null);
+    (envGoogleKey && envGoogleKey.trim() !== '') || userKey != null;
 
   if (!isGoogleKeyProvided && loadServiceKey) {
     /** Only attempt to load service key if GOOGLE_KEY is not provided */
@@ -56,12 +61,10 @@ export async function initializeGoogle({
     }
   }
 
-  const credentials: GoogleCredentials = isUserProvided
-    ? (userKey as GoogleCredentials)
-    : {
-        [AuthKeys.GOOGLE_SERVICE_KEY]: serviceKey,
-        [AuthKeys.GOOGLE_API_KEY]: GOOGLE_KEY,
-      };
+  const credentials: GoogleCredentials = userKey ?? {
+    [AuthKeys.GOOGLE_SERVICE_KEY]: serviceKey,
+    [AuthKeys.GOOGLE_API_KEY]: envGoogleKey,
+  };
 
   let clientOptions: GoogleConfigOptions = {};
 

@@ -77,6 +77,8 @@ export async function initializeCustom({
 
   const CUSTOM_API_KEY = extractEnvVariable(endpointConfig.apiKey ?? '');
   const CUSTOM_BASE_URL = extractEnvVariable(endpointConfig.baseURL ?? '');
+  const allowUserProvidedKey = endpointConfig.userProvide === true;
+  const allowUserProvidedURL = endpointConfig.userProvideURL === true;
 
   if (CUSTOM_API_KEY.match(envVarRegex)) {
     throw new Error(`Missing API Key for ${endpoint}.`);
@@ -86,8 +88,10 @@ export async function initializeCustom({
     throw new Error(`Missing Base URL for ${endpoint}.`);
   }
 
-  const userProvidesKey = isUserProvided(CUSTOM_API_KEY);
-  const userProvidesURL = isUserProvided(CUSTOM_BASE_URL);
+  const configRequiresUserKey = isUserProvided(CUSTOM_API_KEY);
+  const configRequiresUserURL = isUserProvided(CUSTOM_BASE_URL);
+  const userProvidesKey = allowUserProvidedKey || configRequiresUserKey;
+  const userProvidesURL = allowUserProvidedURL || configRequiresUserURL;
 
   // Expiry is only checked when present: the Agents API sends an OpenAI-compatible
   // request body that does not include `key` (the expiry timestamp), so expiresAt
@@ -101,10 +105,10 @@ export async function initializeCustom({
     userValues = await db.getUserKeyValues({ userId: req.user?.id ?? '', name: endpoint });
   }
 
-  const apiKey = userProvidesKey ? userValues?.apiKey : CUSTOM_API_KEY;
-  const baseURL = userProvidesURL ? userValues?.baseURL : CUSTOM_BASE_URL;
+  const apiKey = userValues?.apiKey || (configRequiresUserKey ? undefined : CUSTOM_API_KEY);
+  const baseURL = userValues?.baseURL || (configRequiresUserURL ? undefined : CUSTOM_BASE_URL);
 
-  if (userProvidesKey && !apiKey) {
+  if (configRequiresUserKey && !apiKey) {
     throw new Error(
       JSON.stringify({
         type: ErrorTypes.NO_USER_KEY,
@@ -112,7 +116,7 @@ export async function initializeCustom({
     );
   }
 
-  if (userProvidesURL && !baseURL) {
+  if (configRequiresUserURL && !baseURL) {
     throw new Error(
       JSON.stringify({
         type: ErrorTypes.NO_BASE_URL,

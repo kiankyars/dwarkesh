@@ -1,0 +1,54 @@
+version: 1.3.6
+cache: true
+
+interface:
+  customWelcome: "Dwarkesh transcripts only. Every answer is grounded against the archived transcript corpus on the Render backend."
+  fileSearch: false
+  endpointsMenu: true
+  modelSelect: true
+  parameters: true
+  sidePanel: true
+  presets: false
+  prompts:
+    use: false
+    create: false
+    share: false
+    public: false
+  bookmarks: false
+  multiConvo: true
+  agents:
+    use: false
+    create: false
+    share: false
+    public: false
+  marketplace:
+    use: false
+  fileCitations: true
+
+registration:
+  socialLogins: []
+
+endpoints:
+  agents:
+    disableBuilder: true
+    capabilities: []
+  google:
+    titleModel: gemini-3.1-flash-lite-preview
+  custom:
+    - name: "OpenRouter"
+      apiKey: "${OPENROUTER_KEY}"
+      userProvide: true
+      baseURL: "https://openrouter.ai/api/v1"
+      models:
+        default:
+          - "meta-llama/llama-3.1-8b-instruct:free"
+        fetch: true
+      titleConvo: false
+      dropParams:
+        - "stop"
+      modelDisplayLabel: "OpenRouter"
+
+fileConfig:
+  endpoints:
+    default:
+      disabled: true

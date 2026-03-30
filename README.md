@@ -1,26 +1,30 @@
-# Dwarkesh Podcast RAG
+# Dwarkesh
 
-Public RAG app over Dwarkesh's podcast transcripts with:
+This repo now has two roles:
 
-- Next.js 16 + `assistant-ui`
+- the root Next.js app is a headless Dwarkesh transcript backend for ingestion, artifact export, retrieval, and private grounding
+- the public chat product is the vendored LibreChat app in [`vendor/librechat`](/Users/kian/Developer/dwarkesh/vendor/librechat)
+
+## Render backend
+
+The root app owns:
+
+- transcript discovery and parsing
 - Gemini embeddings via `gemini-embedding-2-preview`
-- Artifact-backed retrieval from checked-in chunk + embedding files
-- Dynamic model picker for:
-  - fixed Gemini models
-  - all free OpenRouter text-generation models
-- Scheduled reindexing through GitHub Actions
+- artifact-backed retrieval from [`data/artifacts/current`](/Users/kian/Developer/dwarkesh/data/artifacts/current)
+- `POST /api/rag/context` for private LibreChat grounding
+- `GET /api/search?q=` for retrieval diagnostics
+- internal ingest/export routes for refresh jobs
 
-## Local setup
+Local bring-up:
 
 1. Copy [`.env.example`](/Users/kian/Developer/dwarkesh/.env.example) to `.env.local`.
-2. Fill in `GEMINI_API_KEY` and `OPENROUTER_API_KEY`.
+2. Fill in `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `CRAWL_SECRET`, and `LIBRECHAT_SHARED_SECRET`.
 3. Run `npm install`.
-4. Generate the local retrieval bundle with `npm run ingest:backfill`.
-5. Start the app with `npm run dev`.
+4. Run `npm run ingest:backfill`.
+5. Start the backend with `npm run dev`.
 
-The first backfill writes the live index into [`data/artifacts/current`](/Users/kian/Developer/dwarkesh/data/artifacts/current).
-
-## Commands
+Useful commands:
 
 - `npm run ingest`
 - `npm run ingest:backfill`
@@ -28,17 +32,20 @@ The first backfill writes the live index into [`data/artifacts/current`](/Users/
 - `npm run lint`
 - `npm run build`
 
-## Deployment shape
+The Render service config is in [render.yaml](/Users/kian/Developer/dwarkesh/render.yaml). Artifact refreshes still run through [`.github/workflows/reindex.yml`](/Users/kian/Developer/dwarkesh/.github/workflows/reindex.yml).
 
-[render.yaml](/Users/kian/Developer/dwarkesh/render.yaml) now targets a free Render web service only. The app serves the checked-in artifact directly from disk, so it no longer needs Render Postgres or Redis to answer queries.
+## Public frontend
 
-Automatic corpus refreshes happen in [`.github/workflows/reindex.yml`](/Users/kian/Developer/dwarkesh/.github/workflows/reindex.yml):
+The public app is the patched LibreChat deployment in [`vendor/librechat`](/Users/kian/Developer/dwarkesh/vendor/librechat). It uses:
 
-- every 6 hours the workflow runs `npm run ingest`
-- updated files in `data/artifacts/current` are committed back to the repo
-- Render auto-deploys the new artifact on the next push
+- fixed Gemini chat models, with `gemini-3.1-flash-lite-preview` first
+- all free text-capable OpenRouter models
+- global Dwarkesh transcript grounding on every non-assistant chat
+- raw upstream provider errors surfaced directly to the user
 
-## Runtime notes
+Deployment files:
 
-- If a selected chat model fails upstream, the UI shows the raw provider error and the user can switch models.
-- The internal ingest/export routes still exist for manual refreshes, but GitHub Actions is the durable update path for Render because free web disks are not a persistent database.
+- config: [`vendor/librechat/librechat.yaml`](/Users/kian/Developer/dwarkesh/vendor/librechat/librechat.yaml)
+- env template: [`vendor/librechat/.env.dwarkesh.example`](/Users/kian/Developer/dwarkesh/vendor/librechat/.env.dwarkesh.example)
+- compose: [`vendor/librechat/docker-compose.dwarkesh.yml`](/Users/kian/Developer/dwarkesh/vendor/librechat/docker-compose.dwarkesh.yml)
+- notes: [`vendor/librechat/README.DWARKESH.md`](/Users/kian/Developer/dwarkesh/vendor/librechat/README.DWARKESH.md)

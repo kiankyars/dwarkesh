@@ -72,10 +72,10 @@ async function loadConfigModels(req) {
 
     modelsConfig[name] = [];
 
-    if (models.fetch && !isUserProvided(API_KEY) && !isUserProvided(BASE_URL)) {
+    if (models.fetch && shouldFetchModels({ name, API_KEY, BASE_URL })) {
       fetchPromisesMap[uniqueKey] =
         fetchPromisesMap[uniqueKey] ||
-        fetchModels({
+        fetchEndpointModels({
           name,
           apiKey: API_KEY,
           baseURL: BASE_URL,
@@ -112,6 +112,55 @@ async function loadConfigModels(req) {
   }
 
   return modelsConfig;
+}
+
+function shouldFetchModels({ name, API_KEY, BASE_URL }) {
+  if (isOpenRouterEndpoint(name, BASE_URL)) {
+    return !isUserProvided(BASE_URL);
+  }
+
+  return !isUserProvided(API_KEY) && !isUserProvided(BASE_URL);
+}
+
+async function fetchEndpointModels(params) {
+  if (isOpenRouterEndpoint(params.name, params.baseURL)) {
+    return fetchOpenRouterModels(params);
+  }
+
+  return fetchModels(params);
+}
+
+async function fetchOpenRouterModels({ apiKey, baseURL, headers }) {
+  const response = await fetch(`${baseURL.replace(/\/+$/, '')}/models`, {
+    headers: {
+      accept: 'application/json',
+      ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+      ...(headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch OpenRouter models: ${response.status}`);
+  }
+
+  const payload = await response.json();
+  return (payload.data ?? [])
+    .filter(isOpenRouterFreeTextModel)
+    .map((model) => model.id)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function isOpenRouterEndpoint(name, baseURL) {
+  return name.toLowerCase() === 'openrouter' || baseURL.includes('openrouter.ai');
+}
+
+function isOpenRouterFreeTextModel(model) {
+  const promptIsFree = model?.pricing?.prompt === '0';
+  const completionIsFree = model?.pricing?.completion === '0';
+  const acceptsText = model?.architecture?.input_modalities?.includes('text') ?? false;
+  const outputsText = model?.architecture?.output_modalities?.includes('text') ?? false;
+
+  return promptIsFree && completionIsFree && acceptsText && outputsText;
 }
 
 module.exports = loadConfigModels;

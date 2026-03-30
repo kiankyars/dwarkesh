@@ -52,6 +52,7 @@ const { encodeAndFormat } = require('~/server/services/Files/images/encode');
 const { createContextHandlers } = require('~/app/clients/prompts');
 const { resolveConfigServers } = require('~/server/services/MCP');
 const { getMCPServerTools } = require('~/server/services/Config');
+const { fetchDwarkeshGrounding } = require('~/server/services/DwarkeshRAG');
 const BaseClient = require('~/app/clients/BaseClient');
 const { getMCPManager } = require('~/config');
 const db = require('~/models');
@@ -343,6 +344,18 @@ class AgentClient extends BaseClient {
     if (withoutKeys) {
       const memoryContext = `${memoryInstructions}\n\n# Existing memory about the user:\n${withoutKeys}`;
       sharedRunContextParts.push(memoryContext);
+    }
+
+    const dwarkeshGrounding = await fetchDwarkeshGrounding({
+      messages: orderedMessages,
+      messageId: this.responseMessageId,
+      conversationId: this.conversationId,
+    });
+    if (dwarkeshGrounding?.injectedSystemText) {
+      sharedRunContextParts.push(dwarkeshGrounding.injectedSystemText);
+    }
+    if (dwarkeshGrounding?.attachment) {
+      this.artifactPromises.push(Promise.resolve(dwarkeshGrounding.attachment));
     }
 
     const sharedRunContext = sharedRunContextParts.join('\n\n');

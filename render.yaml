@@ -1,10 +1,11 @@
 services:
   - type: web
     name: dwarkesh-rag-web
-    env: node
-    plan: free
+    runtime: node
+    plan: starter
     buildCommand: npm install && npm run build
     startCommand: npm run start
+    healthCheckPath: /
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
@@ -15,5 +16,98 @@ services:
         sync: false
       - key: CRAWL_SECRET
         sync: false
+      - key: LIBRECHAT_SHARED_SECRET
+        generateValue: true
       - key: ARTIFACT_DIR
         value: /opt/render/project/src/data/artifacts
+
+  - type: pserv
+    name: dwarkesh-mongodb
+    runtime: docker
+    plan: starter
+    rootDir: infra/render/mongo
+    dockerfilePath: ./Dockerfile
+    disk:
+      name: mongo-data
+      mountPath: /data/db
+      sizeGB: 10
+    autoDeploy: true
+
+  - type: pserv
+    name: dwarkesh-meilisearch
+    runtime: docker
+    plan: starter
+    rootDir: infra/render/meilisearch
+    dockerfilePath: ./Dockerfile
+    disk:
+      name: meili-data
+      mountPath: /meili_data
+      sizeGB: 10
+    autoDeploy: true
+    envVars:
+      - key: MEILI_NO_ANALYTICS
+        value: "true"
+      - key: MEILI_MASTER_KEY
+        generateValue: true
+
+  - type: web
+    name: dwarkesh
+    runtime: docker
+    plan: starter
+    rootDir: vendor/librechat
+    dockerfilePath: ./Dockerfile
+    dockerCommand: sh /app/scripts/start-render.sh
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_MAX_OLD_SPACE_SIZE
+        value: 6144
+      - key: CONFIG_PATH
+        value: /app/librechat.yaml
+      - key: ENDPOINTS
+        value: google
+      - key: ALLOW_EMAIL_LOGIN
+        value: "true"
+      - key: ALLOW_REGISTRATION
+        value: "true"
+      - key: GOOGLE_USER_PROVIDE
+        value: "true"
+      - key: GOOGLE_MODELS
+        value: gemini-3.1-flash-lite-preview,gemini-3-flash-preview,gemini-2.5-flash,gemini-2.5-flash-lite
+      - key: GOOGLE_KEY
+        sync: false
+      - key: OPENROUTER_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: CREDS_KEY
+        generateValue: true
+      - key: CREDS_IV
+        generateValue: true
+      - key: MONGO_HOSTPORT
+        fromService:
+          type: pserv
+          name: dwarkesh-mongodb
+          property: hostport
+      - key: MEILI_HOSTPORT
+        fromService:
+          type: pserv
+          name: dwarkesh-meilisearch
+          property: hostport
+      - key: MEILI_MASTER_KEY
+        fromService:
+          type: pserv
+          name: dwarkesh-meilisearch
+          envVarKey: MEILI_MASTER_KEY
+      - key: DWARKESH_RAG_HOSTPORT
+        fromService:
+          type: web
+          name: dwarkesh-rag-web
+          property: hostport
+      - key: DWARKESH_RAG_SHARED_SECRET
+        fromService:
+          type: web
+          name: dwarkesh-rag-web
+          envVarKey: LIBRECHAT_SHARED_SECRET
