@@ -1995,6 +1995,34 @@ export function getEndpointField<
   return config[property];
 }
 
+export function endpointHasUsableKey(
+  endpointsConfig: TEndpointsConfig | undefined | null,
+  endpoint: EModelEndpoint | string | null | undefined,
+  expiresAt?: string | null,
+) {
+  const userProvide = Boolean(getEndpointField(endpointsConfig, endpoint, 'userProvide'));
+  const adminKeyAvailable = Boolean(
+    getEndpointField(endpointsConfig, endpoint, 'adminKeyAvailable'),
+  );
+
+  if (adminKeyAvailable || !userProvide) {
+    return true;
+  }
+
+  return Boolean(expiresAt);
+}
+
+export function endpointRequiresUserKey(
+  endpointsConfig: TEndpointsConfig | undefined | null,
+  endpoint: EModelEndpoint | string | null | undefined,
+  expiresAt?: string | null,
+) {
+  return (
+    Boolean(getEndpointField(endpointsConfig, endpoint, 'userProvide')) &&
+    !endpointHasUsableKey(endpointsConfig, endpoint, expiresAt)
+  );
+}
+
 /**
  * Resolves the effective endpoint type:
  * - Non-agents endpoint: config.type || endpoint

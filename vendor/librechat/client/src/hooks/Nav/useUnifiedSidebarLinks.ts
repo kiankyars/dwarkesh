@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useRecoilValue } from 'recoil';
 import { MessageSquare } from 'lucide-react';
 import { useUserKeyQuery } from 'librechat-data-provider/react-query';
-import { getConfigDefaults, getEndpointField } from 'librechat-data-provider';
+import { endpointHasUsableKey, getConfigDefaults, getEndpointField } from 'librechat-data-provider';
 import type { TEndpointsConfig } from 'librechat-data-provider';
 import type { NavLink } from '~/common';
 import ConversationsSection from '~/components/UnifiedSidebar/ConversationsSection';
@@ -28,16 +28,11 @@ export default function useUnifiedSidebarLinks() {
     [endpoint, endpointsConfig],
   );
 
-  const userProvidesKey = useMemo(
-    () => !!(endpointsConfig?.[endpoint ?? '']?.userProvide ?? false),
-    [endpointsConfig, endpoint],
-  );
-
   const { data: keyExpiry = { expiresAt: undefined } } = useUserKeyQuery(endpoint ?? '');
 
   const keyProvided = useMemo(
-    () => (userProvidesKey ? !!(keyExpiry.expiresAt ?? '') : true),
-    [keyExpiry.expiresAt, userProvidesKey],
+    () => endpointHasUsableKey(endpointsConfig, endpoint, keyExpiry.expiresAt ?? ''),
+    [endpointsConfig, endpoint, keyExpiry.expiresAt],
   );
 
   const sideNavLinks = useSideNavLinks({

@@ -12,6 +12,7 @@ import HoverButtons from '~/components/Chat/Messages/HoverButtons';
 import MessageIcon from '~/components/Chat/Messages/MessageIcon';
 import DwarkeshSources from '~/components/Chat/Messages/DwarkeshSources';
 import SubRow from '~/components/Chat/Messages/SubRow';
+import { extractDwarkeshSources, linkDwarkeshCitations } from '~/utils/dwarkeshSources';
 import { fontSizeAtom } from '~/store/fontSize';
 import { MessageContext } from '~/Providers';
 import store from '~/store';
@@ -123,6 +124,9 @@ const MessageRender = memo(function MessageRender({
     messageId: msg?.messageId,
     attachments: msg?.attachments,
   });
+  const dwarkeshSources = useMemo(() => extractDwarkeshSources(attachments), [attachments]);
+  const renderedText =
+    !msg?.text || msg.isCreatedByUser ? msg?.text || '' : linkDwarkeshCitations(msg.text, dwarkeshSources);
 
   const handleRegenerateMessage = useCallback(() => regenerateMessage(), [regenerateMessage]);
   const hasNoChildren = !(msg?.children?.length ?? 0);
@@ -227,7 +231,7 @@ const MessageRender = memo(function MessageRender({
                 ask={ask}
                 edit={edit}
                 isLast={isLast}
-                text={msg.text || ''}
+                text={renderedText}
                 message={msg}
                 enterEdit={enterEdit}
                 error={!!(msg.error ?? false)}
@@ -239,7 +243,7 @@ const MessageRender = memo(function MessageRender({
               />
             </MessageContext.Provider>
           </div>
-          {!msg.isCreatedByUser && <DwarkeshSources attachments={attachments} />}
+          {!msg.isCreatedByUser && <DwarkeshSources sources={dwarkeshSources} />}
           {hasNoChildren && isSubmitting ? (
             <PlaceholderRow />
           ) : (

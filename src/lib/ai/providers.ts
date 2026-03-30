@@ -1,6 +1,6 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { embed, embedMany, streamText, type ModelMessage } from "ai";
+import { embed, embedMany, generateText, streamText, type ModelMessage } from "ai";
 
 import {
   DEFAULT_CHAT_CONTEXT_LIMIT,
@@ -107,6 +107,46 @@ export function streamChatCompletion({
       messages,
       maxRetries: 0,
     });
+  }
+
+  throw new AppError(400, `Unsupported provider: ${provider}`);
+}
+
+export async function generateChatCompletion({
+  modelId,
+  messages,
+  system,
+}: {
+  modelId: string;
+  messages: ModelMessage[];
+  system: string;
+}) {
+  const [provider, rawId] = modelId.split(":");
+
+  if (!provider || !rawId) {
+    throw new AppError(400, `Invalid model identifier: ${modelId}`);
+  }
+
+  if (provider === "gemini") {
+    const google = getGeminiProvider();
+    const result = await generateText({
+      model: google.chat(rawId),
+      system,
+      messages,
+      maxRetries: 0,
+    });
+    return result.text;
+  }
+
+  if (provider === "openrouter") {
+    const openRouter = getOpenRouterProvider();
+    const result = await generateText({
+      model: openRouter.chat(rawId),
+      system,
+      messages,
+      maxRetries: 0,
+    });
+    return result.text;
   }
 
   throw new AppError(400, `Unsupported provider: ${provider}`);

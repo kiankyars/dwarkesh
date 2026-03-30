@@ -8,6 +8,7 @@ async function loadAsyncEndpoints() {
   const googleAllowUserProvide = process.env.GOOGLE_USER_PROVIDE === 'true';
   let serviceKey;
   let googleUserProvides = googleAllowUserProvide;
+  let adminKeyAvailable = false;
 
   /** Check if GOOGLE_KEY is provided at all(including 'user_provided') */
   const isGoogleKeyProvided = googleKey && googleKey.trim() !== '';
@@ -15,6 +16,7 @@ async function loadAsyncEndpoints() {
   if (isGoogleKeyProvided) {
     /** If GOOGLE_KEY is provided, check if it's user_provided */
     googleUserProvides = googleAllowUserProvide || isUserProvided(googleKey);
+    adminKeyAvailable = !isUserProvided(googleKey);
   } else {
     /** Only attempt to load service key if GOOGLE_KEY is not provided */
     const serviceKeyPath =
@@ -22,6 +24,7 @@ async function loadAsyncEndpoints() {
 
     try {
       serviceKey = await loadServiceKey(serviceKeyPath);
+      adminKeyAvailable = Boolean(serviceKey);
     } catch (error) {
       logger.error('Error loading service key', error);
       serviceKey = null;
@@ -30,7 +33,7 @@ async function loadAsyncEndpoints() {
 
   const google =
     serviceKey || isGoogleKeyProvided || googleAllowUserProvide
-      ? { userProvide: googleUserProvides }
+      ? { userProvide: googleUserProvides, adminKeyAvailable }
       : false;
 
   return { google };

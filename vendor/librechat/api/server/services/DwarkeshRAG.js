@@ -114,6 +114,7 @@ function buildSearchAttachment({ sources, messageId, conversationId }) {
   }
 
   const organic = sources.map((source) => ({
+    label: source.label,
     title: `${source.label} ${source.episodeTitle}`,
     link: source.sourceUrl,
     snippet: source.sectionHeading

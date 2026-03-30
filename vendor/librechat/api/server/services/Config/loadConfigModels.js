@@ -116,7 +116,7 @@ async function loadConfigModels(req) {
 
 function shouldFetchModels({ name, API_KEY, BASE_URL }) {
   if (isOpenRouterEndpoint(name, BASE_URL)) {
-    return !isUserProvided(BASE_URL);
+    return !!API_KEY && !isUserProvided(API_KEY) && !isUserProvided(BASE_URL);
   }
 
   return !isUserProvided(API_KEY) && !isUserProvided(BASE_URL);

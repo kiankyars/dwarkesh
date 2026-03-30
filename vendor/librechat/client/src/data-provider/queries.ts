@@ -2,6 +2,7 @@ import {
   QueryKeys,
   dataService,
   EModelEndpoint,
+  endpointHasUsableKey,
   isAgentsEndpoint,
   defaultOrderQuery,
   defaultAssistantsVersion,
@@ -194,8 +195,7 @@ export const useAvailableToolsQuery = <TData = t.TPlugin[]>(
   const queryClient = useQueryClient();
   const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
   const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([QueryKeys.name, endpoint]);
-  const userProvidesKey = !!endpointsConfig?.[endpoint]?.userProvide;
-  const keyProvided = userProvidesKey ? !!keyExpiry?.expiresAt : true;
+  const keyProvided = endpointHasUsableKey(endpointsConfig, endpoint, keyExpiry?.expiresAt);
   const enabled = isAgentsEndpoint(endpoint) ? true : !!endpointsConfig?.[endpoint] && keyProvided;
   const version: string | number | undefined =
     endpointsConfig?.[endpoint]?.version ?? defaultAssistantsVersion[endpoint];
@@ -223,8 +223,7 @@ export const useListAssistantsQuery = <TData = AssistantListResponse>(
   const queryClient = useQueryClient();
   const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
   const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([QueryKeys.name, endpoint]);
-  const userProvidesKey = !!(endpointsConfig?.[endpoint]?.userProvide ?? false);
-  const keyProvided = userProvidesKey ? !!(keyExpiry?.expiresAt ?? '') : true;
+  const keyProvided = endpointHasUsableKey(endpointsConfig, endpoint, keyExpiry?.expiresAt ?? '');
   const enabled = !!endpointsConfig?.[endpoint] && keyProvided;
   const version = endpointsConfig?.[endpoint]?.version ?? defaultAssistantsVersion[endpoint];
   return useQuery<AssistantListResponse, unknown, TData>(
@@ -289,8 +288,7 @@ export const useGetAssistantByIdQuery = (
   const queryClient = useQueryClient();
   const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
   const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([QueryKeys.name, endpoint]);
-  const userProvidesKey = endpointsConfig?.[endpoint]?.userProvide ?? false;
-  const keyProvided = userProvidesKey ? !!keyExpiry?.expiresAt : true;
+  const keyProvided = endpointHasUsableKey(endpointsConfig, endpoint, keyExpiry?.expiresAt);
   const enabled = !!endpointsConfig?.[endpoint] && keyProvided;
   const version = endpointsConfig?.[endpoint]?.version ?? defaultAssistantsVersion[endpoint];
   return useQuery<Assistant>(
@@ -323,8 +321,7 @@ export const useGetActionsQuery = <TData = Action[]>(
   const queryClient = useQueryClient();
   const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
   const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([QueryKeys.name, endpoint]);
-  const userProvidesKey = !!endpointsConfig?.[endpoint]?.userProvide;
-  const keyProvided = userProvidesKey ? !!keyExpiry?.expiresAt : true;
+  const keyProvided = endpointHasUsableKey(endpointsConfig, endpoint, keyExpiry?.expiresAt);
   const enabled =
     (!!endpointsConfig?.[endpoint] && keyProvided) || endpoint === EModelEndpoint.agents;
 
@@ -347,8 +344,7 @@ export const useGetAssistantDocsQuery = <TData = AssistantDocument[]>(
   const queryClient = useQueryClient();
   const endpointsConfig = queryClient.getQueryData<TEndpointsConfig>([QueryKeys.endpoints]);
   const keyExpiry = queryClient.getQueryData<TCheckUserKeyResponse>([QueryKeys.name, endpoint]);
-  const userProvidesKey = !!(endpointsConfig?.[endpoint]?.userProvide ?? false);
-  const keyProvided = userProvidesKey ? !!(keyExpiry?.expiresAt ?? '') : true;
+  const keyProvided = endpointHasUsableKey(endpointsConfig, endpoint, keyExpiry?.expiresAt ?? '');
   const enabled = !!endpointsConfig?.[endpoint] && keyProvided;
   const version = endpointsConfig?.[endpoint]?.version ?? defaultAssistantsVersion[endpoint];
 

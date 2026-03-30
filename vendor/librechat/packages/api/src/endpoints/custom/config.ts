@@ -42,10 +42,12 @@ export function loadCustomEndpointsConfig(
 
       const resolvedApiKey = extractEnvVariable(apiKey ?? '');
       const resolvedBaseURL = extractEnvVariable(baseURL ?? '');
+      const adminKeyAvailable = Boolean(resolvedApiKey && !isUserProvided(resolvedApiKey));
 
       customEndpointsConfig[name] = {
         type: EModelEndpoint.custom,
         userProvide: userProvide === true || isUserProvided(resolvedApiKey),
+        adminKeyAvailable,
         userProvideURL: userProvideURL === true || isUserProvided(resolvedBaseURL),
         customParams,
         modelDisplayLabel,

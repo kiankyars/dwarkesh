@@ -1,6 +1,7 @@
 const accessPermissions = require('./accessPermissions');
 const assistants = require('./assistants');
 const categories = require('./categories');
+const dwarkesh = require('./dwarkesh');
 const adminAuth = require('./admin/auth');
 const adminConfig = require('./admin/config');
 const adminGroups = require('./admin/groups');
@@ -32,6 +33,7 @@ const mcp = require('./mcp');
 
 module.exports = {
   mcp,
+  dwarkesh,
   auth,
   adminAuth,
   adminConfig,

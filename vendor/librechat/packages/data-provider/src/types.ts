@@ -372,6 +372,7 @@ export type TConfig = {
   version?: string;
   modelDisplayLabel?: string;
   userProvide?: boolean | null;
+  adminKeyAvailable?: boolean | null;
   userProvideURL?: boolean | null;
   disableBuilder?: boolean;
   retrievalModels?: string[];

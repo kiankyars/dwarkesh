@@ -1,51 +1,22 @@
 import { useMemo } from 'react';
 import { Globe } from 'lucide-react';
-import { Tools } from 'librechat-data-provider';
 import type { TAttachment } from 'librechat-data-provider';
 import { useLocalize } from '~/hooks';
+import { extractDwarkeshSources } from '~/utils/dwarkeshSources';
+import type { DwarkeshSource } from '~/utils/dwarkeshSources';
 
-type DwarkeshSource = {
-  title: string;
-  link: string;
-  snippet?: string;
-  attribution?: string;
-};
-
-function extractDwarkeshSources(attachments?: TAttachment[]): DwarkeshSource[] {
-  if (!attachments?.length) {
-    return [];
-  }
-
-  const seenLinks = new Set<string>();
-  const sources: DwarkeshSource[] = [];
-
-  for (const attachment of attachments) {
-    if (attachment.type !== Tools.web_search || attachment.toolCallId !== 'dwarkesh_rag') {
-      continue;
-    }
-
-    const organic = attachment[Tools.web_search]?.organic ?? [];
-    for (const source of organic) {
-      if (!source?.link || seenLinks.has(source.link)) {
-        continue;
-      }
-
-      seenLinks.add(source.link);
-      sources.push({
-        title: source.title || source.link,
-        link: source.link,
-        snippet: source.snippet,
-        attribution: source.attribution,
-      });
-    }
-  }
-
-  return sources;
-}
-
-export default function DwarkeshSources({ attachments }: { attachments?: TAttachment[] }) {
+export default function DwarkeshSources({
+  attachments,
+  sources: providedSources,
+}: {
+  attachments?: TAttachment[];
+  sources?: DwarkeshSource[];
+}) {
   const localize = useLocalize();
-  const sources = useMemo(() => extractDwarkeshSources(attachments), [attachments]);
+  const sources = useMemo(
+    () => providedSources ?? extractDwarkeshSources(attachments),
+    [attachments, providedSources],
+  );
 
   if (!sources.length) {
     return null;
@@ -61,13 +32,18 @@ export default function DwarkeshSources({ attachments }: { attachments?: TAttach
       <div className="mt-3 grid gap-2">
         {sources.map((source) => (
           <a
-            key={source.link}
+            key={source.label}
             href={source.link}
             target="_blank"
             rel="noopener noreferrer"
             className="rounded-xl border border-border-light bg-surface-primary px-3 py-2 transition-colors hover:bg-surface-hover"
           >
-            <p className="text-sm font-medium text-text-primary">{source.title}</p>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-surface-hover px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-secondary">
+                {source.label}
+              </span>
+              <p className="text-sm font-medium text-text-primary">{source.title}</p>
+            </div>
             {source.attribution ? (
               <p className="mt-1 text-xs text-text-secondary">{source.attribution}</p>
             ) : null}
