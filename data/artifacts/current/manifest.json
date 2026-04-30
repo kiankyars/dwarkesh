@@ -1,6 +1,27 @@
 {
-  "exportedAt": "2026-04-29T08:42:34.078Z",
-  "episodeCount": 75,
-  "chunkCount": 1735,
-  "embeddingDimensions": 1536
+  "schemaVersion": 2,
+  "exportedAt": "2026-04-30T02:19:42.695Z",
+  "episodeCount": 96,
+  "chunkCount": 3925,
+  "embeddingProvider": "gemini",
+  "embeddingModel": "gemini-embedding-001",
+  "embeddingDimensions": 1536,
+  "chunkFiles": [
+    "chunks/chunks-000.jsonl",
+    "chunks/chunks-001.jsonl",
+    "chunks/chunks-002.jsonl",
+    "chunks/chunks-003.jsonl",
+    "chunks/chunks-004.jsonl",
+    "chunks/chunks-005.jsonl",
+    "chunks/chunks-006.jsonl",
+    "chunks/chunks-007.jsonl"
+  ],
+  "expectedEpisodeCount": 96,
+  "skippedCount": 28,
+  "failedCount": 0,
+  "source": {
+    "name": "Substack archive API",
+    "url": "https://www.dwarkesh.com/api/v1/archive",
+    "fetchedAt": "2026-04-30T02:19:42.694Z"
+  }
 }

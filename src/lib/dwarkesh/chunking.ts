@@ -1,3 +1,4 @@
+import { DEFAULT_CHUNK_MAX_TOKENS } from "@/lib/config";
 import { estimateTokens, unique } from "@/lib/utils";
 import type { EpisodeChunk, ParsedEpisode, ParsedTranscriptTurn } from "@/lib/types";
 
@@ -6,7 +7,7 @@ type ChunkingOptions = {
   overlapTokens?: number;
 };
 
-const DEFAULT_MAX_TOKENS = 850;
+export const DEFAULT_MAX_TOKENS = DEFAULT_CHUNK_MAX_TOKENS;
 const DEFAULT_OVERLAP_TOKENS = 150;
 
 export function chunkEpisode(
@@ -18,7 +19,9 @@ export function chunkEpisode(
   const chunks: EpisodeChunk[] = [];
 
   let currentTurns: ParsedTranscriptTurn[] = [];
-  let currentTokens = 0;
+  const transcriptTurns = episode.transcriptTurns.flatMap((turn) =>
+    splitOversizedTurn(turn, maxTokens),
+  );
 
   const flush = () => {
     if (currentTurns.length === 0) return;
@@ -39,22 +42,106 @@ export function chunkEpisode(
     });
   };
 
-  for (const turn of episode.transcriptTurns) {
-    const turnText = renderTurn(turn);
-    const turnTokens = estimateTokens(turnText);
-
-    if (currentTurns.length > 0 && currentTokens + turnTokens > maxTokens) {
+  for (const turn of transcriptTurns) {
+    if (currentTurns.length > 0 && chunkTokenCount([...currentTurns, turn]) > maxTokens) {
       flush();
       currentTurns = carryOverlap(currentTurns, overlapTokens);
-      currentTokens = estimateTokens(renderChunkText(currentTurns));
+    }
+
+    if (currentTurns.length > 0 && chunkTokenCount([...currentTurns, turn]) > maxTokens) {
+      currentTurns = [];
     }
 
     currentTurns.push(turn);
-    currentTokens += turnTokens;
   }
 
   flush();
   return chunks;
+}
+
+function splitOversizedTurn(
+  turn: ParsedTranscriptTurn,
+  maxTokens: number,
+): ParsedTranscriptTurn[] {
+  if (chunkTokenCount([turn]) <= maxTokens) {
+    return [turn];
+  }
+
+  const headingReserve = turn.sectionHeading ? estimateTokens(`## ${turn.sectionHeading}`) : 0;
+  const textBudget = Math.max(1, maxTokens - headingReserve);
+
+  return splitTextByBudget(turn.text, turn.speaker, textBudget).map((text, index) => ({
+    ...turn,
+    text,
+    sectionHeading: index === 0 ? turn.sectionHeading : null,
+  }));
+}
+
+function splitTextByBudget(text: string, speaker: string, maxTokens: number) {
+  const paragraphs = text.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  const sentenceParts = paragraphs.flatMap(splitSentences);
+  const pieces: string[] = [];
+  let current = "";
+
+  const flushCurrent = () => {
+    if (!current.trim()) return;
+    pieces.push(current.trim());
+    current = "";
+  };
+
+  for (const part of sentenceParts) {
+    if (fitsBudget(part, speaker, maxTokens)) {
+      const candidate = current ? `${current} ${part}` : part;
+      if (fitsBudget(candidate, speaker, maxTokens)) {
+        current = candidate;
+      } else {
+        flushCurrent();
+        current = part;
+      }
+      continue;
+    }
+
+    flushCurrent();
+    pieces.push(...splitWordsByBudget(part, speaker, maxTokens));
+  }
+
+  flushCurrent();
+  return pieces;
+}
+
+function splitSentences(text: string) {
+  return (
+    text
+      .match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g)
+      ?.map((part) => part.trim())
+      .filter(Boolean) ?? [text]
+  );
+}
+
+function splitWordsByBudget(text: string, speaker: string, maxTokens: number) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const pieces: string[] = [];
+  let current: string[] = [];
+
+  for (const word of words) {
+    const candidate = [...current, word].join(" ");
+    if (current.length > 0 && !fitsBudget(candidate, speaker, maxTokens)) {
+      pieces.push(current.join(" "));
+      current = [word];
+    } else {
+      current.push(word);
+    }
+  }
+
+  if (current.length > 0) {
+    pieces.push(current.join(" "));
+  }
+
+  return pieces;
+}
+
+function fitsBudget(text: string, speaker: string, maxTokens: number) {
+  return estimateTokens(`${speaker}: ${text}`) <= maxTokens;
 }
 
 function carryOverlap(turns: ParsedTranscriptTurn[], overlapTokens: number) {
@@ -68,6 +155,10 @@ function carryOverlap(turns: ParsedTranscriptTurn[], overlapTokens: number) {
   }
 
   return carried;
+}
+
+function chunkTokenCount(turns: ParsedTranscriptTurn[]) {
+  return estimateTokens(renderChunkText(turns));
 }
 
 function renderChunkText(turns: ParsedTranscriptTurn[]) {

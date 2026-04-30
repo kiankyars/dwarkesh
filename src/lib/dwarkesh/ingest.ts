@@ -1,12 +1,25 @@
+import { appendFile, readFile, rm } from "node:fs/promises";
+import path from "node:path";
+
+import {
+  DWARKESH_ARCHIVE_API_URL,
+  EMBEDDING_DIMENSIONS,
+  EMBEDDING_MODEL_ID,
+  EMBEDDING_PROVIDER,
+} from "@/lib/config";
 import { embedDocumentBatch } from "@/lib/ai/providers";
 import { exportArtifacts } from "@/lib/artifacts/export";
-import { loadArtifactBundle } from "@/lib/artifacts/store";
+import { getArtifactRootDir, loadArtifactBundle } from "@/lib/artifacts/store";
 import { chunkEpisode } from "@/lib/dwarkesh/chunking";
-import { discoverEpisodeUrls } from "@/lib/dwarkesh/discovery";
-import { parseEpisodeHtml } from "@/lib/dwarkesh/parser";
+import {
+  discoverPodcastPosts,
+  fetchPostDetail,
+  type DiscoveredPodcastPost,
+} from "@/lib/dwarkesh/discovery";
+import { parseSubstackPostDetail } from "@/lib/dwarkesh/parser";
+import { ensureDirectory } from "@/lib/server-utils";
 import type { IndexedChunk, IndexedEpisode, ParsedEpisode } from "@/lib/types";
 
-const FETCH_ATTEMPTS = 6;
 const FETCH_PACING_MS = 750;
 
 type IngestMode = "incremental" | "backfill";
@@ -15,7 +28,10 @@ type IngestSummary = {
   mode: IngestMode;
   discovered: number;
   indexed: number;
+  unchanged: number;
+  cached: number;
   skipped: number;
+  skippedSources: Array<{ url: string; reason: string }>;
   failed: Array<{ url: string; error: string }>;
   artifact?: {
     snapshotDir: string;
@@ -27,14 +43,21 @@ type IngestSummary = {
   };
 };
 
+type IngestCheckpointRecord = {
+  slug: string;
+  episode: IndexedEpisode;
+  chunks: IndexedChunk[];
+};
+
 export async function runIngest(mode: IngestMode): Promise<IngestSummary> {
   const existing = mode === "incremental" ? await loadArtifactBundle({ allowMissing: true }) : null;
+  const canReuseExisting = existing ? hasCompatibleEmbeddingConfig(existing.manifest) : false;
   const episodeMap = new Map<string, IndexedEpisode>(
-    existing?.episodes.map((episode) => [episode.slug, episode]) ?? [],
+    canReuseExisting ? existing?.episodes.map((episode) => [episode.slug, episode]) ?? [] : [],
   );
   const chunkMap = new Map<string, IndexedChunk[]>();
 
-  for (const chunk of existing?.chunks ?? []) {
+  for (const chunk of canReuseExisting ? existing?.chunks ?? [] : []) {
     const current = chunkMap.get(chunk.episodeSlug);
     if (current) {
       current.push(chunk);
@@ -43,24 +66,50 @@ export async function runIngest(mode: IngestMode): Promise<IngestSummary> {
     }
   }
 
-  const urls = await discoverEpisodeUrls();
+  if (existing && !canReuseExisting && existing.episodes.length > 0) {
+    console.log(
+      `[ingest] existing artifact uses ${existing.manifest.embeddingProvider ?? "unknown"}/${
+        existing.manifest.embeddingModel ?? "unknown"
+      }/${existing.manifest.embeddingDimensions}; re-embedding with ${EMBEDDING_PROVIDER}/${EMBEDDING_MODEL_ID}/${EMBEDDING_DIMENSIONS}`,
+    );
+  }
+
+  const posts = await discoverPodcastPosts();
+  if (existing && posts.length < existing.episodes.length) {
+    throw new Error(
+      `Discovery returned ${posts.length} podcast posts, below existing index size ${existing.episodes.length}; refusing to overwrite artifacts`,
+    );
+  }
+
   const summary: IngestSummary = {
     mode,
-    discovered: urls.length,
+    discovered: posts.length,
     indexed: 0,
+    unchanged: 0,
+    cached: 0,
     skipped: 0,
+    skippedSources: [],
     failed: [],
   };
 
   const nextEpisodes = new Map<string, IndexedEpisode>();
   const nextChunks = new Map<string, IndexedChunk[]>();
+  const checkpoint = mode === "backfill" ? await loadIngestCheckpoint() : new Map();
 
-  for (const url of urls) {
+  for (const [index, post] of posts.entries()) {
     try {
-      const html = await fetchEpisode(url);
-      const parsed = await parseEpisodeHtml(html, url);
+      console.log(`[ingest] ${index + 1}/${posts.length} ${post.slug}`);
+      await sleep(FETCH_PACING_MS);
+
+      const detail = await fetchPostDetail(post.slug);
+      const parsed = await parseSubstackPostDetail(detail, post);
       if (!parsed) {
         summary.skipped += 1;
+        summary.skippedSources.push({
+          url: post.sourceUrl,
+          reason: "No public transcript found in Substack post detail",
+        });
+        console.log(`[ingest] skipped ${post.slug}: no public transcript`);
         continue;
       }
 
@@ -74,82 +123,122 @@ export async function runIngest(mode: IngestMode): Promise<IngestSummary> {
       if (unchanged) {
         nextEpisodes.set(parsed.slug, existingEpisode);
         nextChunks.set(parsed.slug, chunkMap.get(parsed.slug) ?? []);
-        summary.skipped += 1;
+        summary.unchanged += 1;
+        console.log(`[ingest] unchanged ${parsed.slug}`);
         continue;
       }
 
-      const chunks = chunkEpisode(parsed);
-      const embeddings = await embedDocumentBatch(chunks.map((chunk) => chunk.text));
-      const embeddedChunks: IndexedChunk[] = chunks.map((chunk, index) => ({
-        ...chunk,
-        embedding: embeddings[index] ?? [],
-        publishedAt: parsed.publishedAt,
-      }));
+      const cached = checkpoint.get(parsed.slug);
+      if (
+        cached &&
+        cached.episode.htmlChecksum === parsed.htmlChecksum &&
+        cached.episode.transcriptChecksum === parsed.transcriptChecksum
+      ) {
+        nextEpisodes.set(parsed.slug, cached.episode);
+        nextChunks.set(parsed.slug, cached.chunks);
+        summary.cached += 1;
+        console.log(`[ingest] cached ${parsed.slug}: ${cached.chunks.length} chunks`);
+        continue;
+      }
 
-      nextEpisodes.set(parsed.slug, toIndexedEpisode(parsed, embeddedChunks.length));
-      nextChunks.set(parsed.slug, embeddedChunks);
-      summary.indexed += 1;
-    } catch (error) {
-      summary.failed.push({
-        url,
-        error: error instanceof Error ? error.message : "Unknown ingest error",
+      const embeddedChunks = await embedParsedEpisode(parsed).catch((error) => {
+        throw new Error(`Embedding failed for ${parsed.slug}: ${formatError(error)}`, {
+          cause: error,
+        });
       });
+      const indexedEpisode = toIndexedEpisode(parsed, embeddedChunks.length);
+      nextEpisodes.set(parsed.slug, indexedEpisode);
+      nextChunks.set(parsed.slug, embeddedChunks);
+      if (mode === "backfill") {
+        await appendIngestCheckpoint({
+          slug: parsed.slug,
+          episode: indexedEpisode,
+          chunks: embeddedChunks,
+        });
+      }
+      summary.indexed += 1;
+      console.log(`[ingest] indexed ${parsed.slug}: ${embeddedChunks.length} chunks`);
+    } catch (error) {
+      if (isFatalIngestError(error)) {
+        throw error;
+      }
+
+      summary.failed.push({
+        url: post.sourceUrl,
+        error: formatError(error),
+      });
+      console.error(
+        `[ingest] failed ${post.slug}: ${formatError(error)}`,
+      );
     }
   }
 
-  if (mode === "incremental") {
-    for (const [slug, episode] of episodeMap) {
-      if (nextEpisodes.has(slug)) continue;
-      nextEpisodes.set(slug, episode);
-      nextChunks.set(slug, chunkMap.get(slug) ?? []);
-    }
-  }
+  assertCompleteIngest(posts, summary);
+  const skippedUrls = new Set(summary.skippedSources.map((source) => source.url));
 
-  summary.artifact = await exportArtifacts({
-    episodes: [...nextEpisodes.values()].sort(compareEpisodes),
-    chunks: [...nextChunks.values()]
-      .flat()
-      .sort((left, right) =>
-        left.episodeSlug === right.episodeSlug
-          ? left.chunkIndex - right.chunkIndex
-          : left.episodeSlug.localeCompare(right.episodeSlug),
-      ),
-  });
+  summary.artifact = await exportArtifacts(
+    {
+      episodes: [...nextEpisodes.values()].sort(compareEpisodes),
+      chunks: [...nextChunks.values()]
+        .flat()
+        .sort((left, right) =>
+          left.episodeSlug === right.episodeSlug
+            ? left.chunkIndex - right.chunkIndex
+            : left.episodeSlug.localeCompare(right.episodeSlug),
+        ),
+    },
+    {
+      expectedEpisodeCount: posts.length - summary.skipped,
+      expectedSlugs: posts
+        .filter((post) => !skippedUrls.has(post.sourceUrl))
+        .map((post) => post.slug),
+      skippedCount: summary.skipped,
+      failedCount: summary.failed.length,
+      embeddingProvider: EMBEDDING_PROVIDER,
+      embeddingModel: EMBEDDING_MODEL_ID,
+      embeddingDimensions: EMBEDDING_DIMENSIONS,
+      source: {
+        name: "Substack archive API",
+        url: DWARKESH_ARCHIVE_API_URL,
+        fetchedAt: new Date().toISOString(),
+      },
+    },
+  );
+
+  if (mode === "backfill") {
+    await clearIngestCheckpoint();
+  }
 
   return summary;
 }
 
-async function fetchEpisode(url: string) {
-  for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt += 1) {
-    if (attempt > 0) {
-      await sleep(getRetryDelay(attempt));
-    } else {
-      await sleep(FETCH_PACING_MS);
+async function embedParsedEpisode(parsed: ParsedEpisode) {
+  const chunks = chunkEpisode(parsed);
+  console.log(`[ingest] embedding ${parsed.slug}: ${chunks.length} chunks`);
+  const embeddings = await embedDocumentBatch(chunks.map((chunk) => chunk.text));
+
+  return chunks.map((chunk, index): IndexedChunk => {
+    const embedding = embeddings[index] ?? [];
+    if (embedding.length !== EMBEDDING_DIMENSIONS) {
+      throw new Error(
+        `Embedding for ${chunk.id} has ${embedding.length} dimensions, expected ${EMBEDDING_DIMENSIONS}`,
+      );
     }
 
-    const response = await fetch(url, {
-      headers: {
-        "user-agent": "dwarkesh-podcast-rag/0.1",
-      },
-      cache: "no-store",
-    });
+    return {
+      ...chunk,
+      embedding,
+      publishedAt: parsed.publishedAt,
+    };
+  });
+}
 
-    if (response.ok) {
-      return response.text();
-    }
-
-    if (response.status === 429 && attempt < FETCH_ATTEMPTS - 1) {
-      const retryAfter = response.headers.get("retry-after");
-      if (retryAfter) {
-        await sleep(parseRetryAfter(retryAfter));
-      }
-      continue;
-    }
-
-    throw new Error(`Failed to fetch ${url}: ${response.status}`);
+function assertCompleteIngest(posts: DiscoveredPodcastPost[], summary: IngestSummary) {
+  if (summary.failed.length > 0) {
+    throw new Error(
+      `Ingest failed for ${summary.failed.length} of ${posts.length} discovered podcast posts; refusing to overwrite artifacts`,
+    );
   }
-
-  throw new Error(`Failed to fetch ${url}: exhausted retries`);
 }
 
 function toIndexedEpisode(parsed: ParsedEpisode, chunkCount: number): IndexedEpisode {
@@ -171,24 +260,99 @@ function compareEpisodes(left: IndexedEpisode, right: IndexedEpisode) {
   return (right.publishedAt ?? "").localeCompare(left.publishedAt ?? "");
 }
 
-function getRetryDelay(attempt: number) {
-  return Math.min(20_000, Math.round(FETCH_PACING_MS * 2 ** attempt));
-}
-
-function parseRetryAfter(value: string) {
-  const numericSeconds = Number(value);
-  if (Number.isFinite(numericSeconds) && numericSeconds > 0) {
-    return numericSeconds * 1_000;
-  }
-
-  const retryDate = Date.parse(value);
-  if (Number.isNaN(retryDate)) {
-    return getRetryDelay(1);
-  }
-
-  return Math.max(1_000, retryDate - Date.now());
+function hasCompatibleEmbeddingConfig(manifest: {
+  embeddingProvider?: string;
+  embeddingModel?: string;
+  embeddingDimensions: number;
+}) {
+  return (
+    manifest.embeddingProvider === EMBEDDING_PROVIDER &&
+    manifest.embeddingModel === EMBEDDING_MODEL_ID &&
+    manifest.embeddingDimensions === EMBEDDING_DIMENSIONS
+  );
 }
 
 function sleep(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function loadIngestCheckpoint() {
+  const checkpoint = new Map<string, IngestCheckpointRecord>();
+  const checkpointPath = getIngestCheckpointPath();
+
+  let fileContents: string;
+  try {
+    fileContents = await readFile(checkpointPath, "utf8");
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return checkpoint;
+    }
+    throw error;
+  }
+
+  for (const line of fileContents.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+
+    const record = JSON.parse(line) as IngestCheckpointRecord;
+    if (isValidCheckpointRecord(record)) {
+      checkpoint.set(record.slug, record);
+    }
+  }
+
+  if (checkpoint.size > 0) {
+    console.log(`[ingest] loaded ${checkpoint.size} checkpointed episodes`);
+  }
+
+  return checkpoint;
+}
+
+async function appendIngestCheckpoint(record: IngestCheckpointRecord) {
+  const checkpointPath = getIngestCheckpointPath();
+  await ensureDirectory(path.dirname(checkpointPath));
+  await appendFile(checkpointPath, `${JSON.stringify(record)}\n`, "utf8");
+}
+
+async function clearIngestCheckpoint() {
+  await rm(getIngestCheckpointPath(), { force: true });
+}
+
+function getIngestCheckpointPath() {
+  return path.join(
+    getArtifactRootDir(),
+    ".ingest-checkpoints",
+    `${safePathSegment(EMBEDDING_PROVIDER)}-${safePathSegment(
+      EMBEDDING_MODEL_ID,
+    )}-${EMBEDDING_DIMENSIONS}.jsonl`,
+  );
+}
+
+function isValidCheckpointRecord(record: IngestCheckpointRecord) {
+  return (
+    typeof record.slug === "string" &&
+    record.episode?.slug === record.slug &&
+    Array.isArray(record.chunks) &&
+    record.chunks.length === record.episode.chunkCount &&
+    record.chunks.every((chunk) => chunk.embedding.length === EMBEDDING_DIMENSIONS)
+  );
+}
+
+function safePathSegment(value: string) {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "-");
+}
+
+function isMissingFileError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
+}
+
+function formatError(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown ingest error";
+}
+
+function isFatalIngestError(error: unknown) {
+  return /embedding failed|quota|resource exhausted|rate limit/i.test(formatError(error));
 }

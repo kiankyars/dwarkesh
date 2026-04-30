@@ -3,10 +3,18 @@ import type { AnyNode } from "domhandler";
 
 import { sha256 } from "@/lib/server-utils";
 import { slugFromUrl, unique } from "@/lib/utils";
+import type { DiscoveredPodcastPost, SubstackPostDetail } from "@/lib/dwarkesh/discovery";
 import type { ParsedEpisode, ParsedTranscriptTurn } from "@/lib/types";
 
 const TRANSCRIPT_HEADING = /^transcript$/i;
-const TIMESTAMP_HEADING = /^(\d+:)?\d{1,2}:\d{2}\s*-\s*/;
+const TIMESTAMP_HEADING = /^\(?((\d+:)?\d{1,2}:\d{2})(?!:)\)?\s*[-–—]\s*/;
+const TIMESTAMP_ONLY = /^\(?((\d+:)?\d{1,2}:\d{2})(?!:)\)?$/;
+const TIMESTAMPED_SPEAKER =
+  /^\[?((\d+:)?\d{1,2}:\d{2})(?!:)\]?\s+([A-Z][^:]{0,80}?):\s+(.+)$/;
+const SPEAKER_TIMESTAMP_LABEL =
+  /^([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,5})\s+\(?((\d+:)?\d{1,2}:\d{2})(?!:)(?:\s*[-–—]\s*(\d+:)?\d{1,2}:\d{2}(?!:))?\)?:?$/;
+const INLINE_TIMESTAMP_SPEAKER =
+  /^([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,5})\s+\(?((\d+:)?\d{1,2}:\d{2})(?!:)(?:\s*[-–—]\s*(\d+:)?\d{1,2}:\d{2}(?!:))?\)?:?\s*(.+)$/;
 const INLINE_SPEAKER = /^([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*){0,4}):\s+(.+)$/;
 const HOST_NAME = "Dwarkesh Patel";
 
@@ -16,6 +24,47 @@ type TranscriptSegment = {
   text?: string;
   speaker?: string;
 };
+
+export async function parseSubstackPostDetail(
+  post: SubstackPostDetail,
+  discovery?: DiscoveredPodcastPost,
+): Promise<ParsedEpisode | null> {
+  const bodyHtml = post.body_html ?? "";
+  const sourceUrl = discovery?.sourceUrl ?? post.canonical_url ?? "";
+  const title = normalizeText(post.title ?? discovery?.title ?? "");
+  const slug = normalizeText(post.slug ?? discovery?.slug ?? slugFromUrl(sourceUrl));
+
+  if (!title || !slug || !bodyHtml) return null;
+
+  const $ = cheerio.load(bodyHtml);
+  const root = $.root();
+  const guestNames = extractGuestNames(title);
+  const transcriptTurns = await extractTranscriptTurnsFromPost($, root, post, guestNames);
+  if (transcriptTurns.length === 0) {
+    return null;
+  }
+
+  const contentChecksum = sha256(
+    JSON.stringify({
+      title,
+      publishedAt: post.post_date ?? discovery?.publishedAt ?? null,
+      bodyHtml,
+      transcriptTurns,
+    }),
+  );
+
+  return {
+    id: `episode:${slug}`,
+    slug,
+    title,
+    guestNames,
+    publishedAt: post.post_date ?? discovery?.publishedAt ?? null,
+    sourceUrl: sourceUrl || `https://www.dwarkesh.com/p/${slug}`,
+    htmlChecksum: sha256(bodyHtml),
+    transcriptChecksum: contentChecksum,
+    transcriptTurns,
+  };
+}
 
 export async function parseEpisodeHtml(html: string, sourceUrl: string): Promise<ParsedEpisode | null> {
   const $ = cheerio.load(html);
@@ -47,6 +96,25 @@ export async function parseEpisodeHtml(html: string, sourceUrl: string): Promise
   };
 }
 
+async function extractTranscriptTurnsFromPost(
+  $: cheerio.CheerioAPI,
+  root: cheerio.Cheerio<AnyNode>,
+  post: SubstackPostDetail,
+  guestNames: string[],
+) {
+  const inlineTurns = extractInlineTranscriptTurns($, root);
+  if (inlineTurns.length > 0) {
+    return inlineTurns;
+  }
+
+  const transcriptAssetUrl = extractTranscriptAssetUrlFromPost(post);
+  if (!transcriptAssetUrl) {
+    return [];
+  }
+
+  return fetchTranscriptTurns(transcriptAssetUrl, guestNames);
+}
+
 async function extractTranscriptTurns(
   $: cheerio.CheerioAPI,
   root: cheerio.Cheerio<AnyNode>,
@@ -73,6 +141,7 @@ function extractInlineTranscriptTurns(
   let inTranscript = false;
   let currentHeading: string | null = null;
   let pendingSpeaker: string | null = null;
+  let pendingTimestamp: string | null = null;
 
   for (const node of nodes) {
     const tagName = node.tagName.toLowerCase();
@@ -95,6 +164,36 @@ function extractInlineTranscriptTurns(
       continue;
     }
 
+    const timestampOnlyMatch = text.match(TIMESTAMP_ONLY);
+    if (timestampOnlyMatch) {
+      const previousSpeaker: string | null = turns.at(-1)?.speaker ?? pendingSpeaker;
+      if (previousSpeaker) {
+        pendingSpeaker = previousSpeaker;
+        pendingTimestamp = timestampOnlyMatch[1] ?? null;
+      }
+      continue;
+    }
+
+    const inlineTimestampMatch = text.match(INLINE_TIMESTAMP_SPEAKER);
+    if (inlineTimestampMatch && isLikelySpeakerName(inlineTimestampMatch[1])) {
+      const inlineText = normalizeText(inlineTimestampMatch.at(-1) ?? "").replace(/^:\s*/, "");
+      if (!inlineText) {
+        pendingSpeaker = inlineTimestampMatch[1];
+        pendingTimestamp = inlineTimestampMatch[2] ?? null;
+        continue;
+      }
+
+      turns.push({
+        sectionHeading: currentHeading,
+        timestamp: inlineTimestampMatch[2] ?? extractTimestamp(currentHeading),
+        speaker: inlineTimestampMatch[1],
+        text: inlineText,
+      });
+      pendingSpeaker = null;
+      pendingTimestamp = null;
+      continue;
+    }
+
     const inlineMatch = text.match(INLINE_SPEAKER);
     if (inlineMatch) {
       turns.push({
@@ -104,22 +203,32 @@ function extractInlineTranscriptTurns(
         text: inlineMatch[2],
       });
       pendingSpeaker = null;
+      pendingTimestamp = null;
+      continue;
+    }
+
+    const speakerTimestampMatch = text.match(SPEAKER_TIMESTAMP_LABEL);
+    if (speakerTimestampMatch && isLikelySpeakerName(speakerTimestampMatch[1])) {
+      pendingSpeaker = speakerTimestampMatch[1];
+      pendingTimestamp = speakerTimestampMatch[2] ?? null;
       continue;
     }
 
     if (isLikelySpeakerLabel(text)) {
       pendingSpeaker = text.replace(/:$/, "");
+      pendingTimestamp = null;
       continue;
     }
 
     if (pendingSpeaker) {
       turns.push({
         sectionHeading: currentHeading,
-        timestamp: extractTimestamp(currentHeading),
+        timestamp: pendingTimestamp ?? extractTimestamp(currentHeading),
         speaker: pendingSpeaker,
         text,
       });
       pendingSpeaker = null;
+      pendingTimestamp = null;
       continue;
     }
 
@@ -135,6 +244,47 @@ function extractInlineTranscriptTurns(
       speaker: "Unknown speaker",
       text,
     });
+  }
+
+  const filteredTurns = turns.filter((turn) => turn.text.length > 0);
+  return filteredTurns.length > 0 ? filteredTurns : extractLooseTimestampedTranscriptTurns($, root);
+}
+
+function extractLooseTimestampedTranscriptTurns(
+  $: cheerio.CheerioAPI,
+  root: cheerio.Cheerio<AnyNode>,
+) {
+  const nodes = root.find("h2, h3, h4, p, li, blockquote").toArray();
+  const turns: ParsedTranscriptTurn[] = [];
+  let inTranscript = false;
+
+  for (const node of nodes) {
+    const tagName = node.tagName.toLowerCase();
+    const text = normalizeText($(node).text());
+    if (!text) continue;
+
+    const timestampedMatch = text.match(TIMESTAMPED_SPEAKER);
+    if (timestampedMatch) {
+      inTranscript = true;
+      turns.push({
+        sectionHeading: null,
+        timestamp: timestampedMatch[1],
+        speaker: normalizeText(timestampedMatch[3]),
+        text: timestampedMatch[4],
+      });
+      continue;
+    }
+
+    if (!inTranscript) continue;
+
+    if (tagName === "h2") {
+      break;
+    }
+
+    const previous = turns.at(-1);
+    if (previous) {
+      previous.text = `${previous.text}\n\n${text}`;
+    }
   }
 
   return turns.filter((turn) => turn.text.length > 0);
@@ -226,6 +376,15 @@ function extractTranscriptAssetUrl(html: string) {
   return directMatch.replace(/\\\//g, "/");
 }
 
+function extractTranscriptAssetUrlFromPost(post: SubstackPostDetail) {
+  return (
+    post.podcastUpload?.transcription?.cdn_url ||
+    post.videoUpload?.extractedAudio?.transcription?.cdn_url ||
+    post.videoUpload?.transcription?.cdn_url ||
+    (post.body_html ? extractTranscriptAssetUrl(post.body_html) : null)
+  );
+}
+
 function extractTitle($: cheerio.CheerioAPI, root: cheerio.Cheerio<AnyNode>) {
   return normalizeText(
     $("meta[property='og:title']").attr("content") ||
@@ -271,7 +430,7 @@ function looksLikeGuestSegment(value: string) {
 
 function extractTimestamp(value: string | null) {
   if (!value) return null;
-  const match = value.match(/^((\d+:)?\d{1,2}:\d{2})/);
+  const match = value.match(/^\(?((\d+:)?\d{1,2}:\d{2})(?!:)\)?/);
   return match?.[1] ?? null;
 }
 
@@ -298,7 +457,11 @@ function isLikelySpeakerLabel(value: string) {
   if (/[?!]/.test(value)) return false;
   if (/^\d/.test(value)) return false;
   if (TIMESTAMP_HEADING.test(value)) return false;
-  const words = value.replace(/:$/, "").split(/\s+/);
+  return isLikelySpeakerName(value.replace(/:$/, ""));
+}
+
+function isLikelySpeakerName(value: string) {
+  const words = value.split(/\s+/);
   if (words.length === 0 || words.length > 5) return false;
 
   return words.every((word) => /^[A-Z][\w.'-]+$/.test(word));

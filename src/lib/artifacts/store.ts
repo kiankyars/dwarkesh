@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { EMBEDDING_DIMENSIONS } from "@/lib/config";
+import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL_ID, EMBEDDING_PROVIDER } from "@/lib/config";
 import { getOptionalEnv } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import { resolveFromRepo } from "@/lib/server-utils";
@@ -86,19 +86,22 @@ export async function loadArtifactBundle(options?: { allowMissing?: boolean }) {
   const currentDir = getCurrentArtifactDir();
   const manifestPath = path.join(currentDir, "manifest.json");
   const episodesPath = path.join(currentDir, "episodes.jsonl");
-  const chunksPath = path.join(currentDir, "chunks.jsonl");
 
   try {
-    const [manifest, episodes, chunks] = await Promise.all([
-      readJsonFile<ArtifactManifest>(manifestPath),
+    const manifest = await readJsonFile<ArtifactManifest>(manifestPath);
+    const chunkFiles = Array.isArray(manifest.chunkFiles) ? manifest.chunkFiles : ["chunks.jsonl"];
+
+    const [episodes, chunkFileRows] = await Promise.all([
       readJsonLines<IndexedEpisode>(episodesPath),
-      readJsonLines<IndexedChunk>(chunksPath),
+      Promise.all(
+        chunkFiles.map((chunkFile) => readJsonLines<IndexedChunk>(path.join(currentDir, chunkFile))),
+      ),
     ]);
 
     return {
       manifest,
       episodes,
-      chunks,
+      chunks: chunkFileRows.flat(),
     } satisfies ArtifactBundle;
   } catch (error) {
     if (allowMissing) {
@@ -218,10 +221,14 @@ async function readJsonLines<T>(filePath: string) {
 function emptyArtifactBundle(): ArtifactBundle {
   return {
     manifest: {
+      schemaVersion: 2,
       exportedAt: "",
       episodeCount: 0,
       chunkCount: 0,
+      embeddingProvider: EMBEDDING_PROVIDER,
+      embeddingModel: EMBEDDING_MODEL_ID,
       embeddingDimensions: EMBEDDING_DIMENSIONS,
+      chunkFiles: [],
     },
     episodes: [],
     chunks: [],

@@ -1,4 +1,5 @@
 export type ModelProvider = "gemini" | "openrouter";
+export type EmbeddingProvider = "gemini" | "openrouter";
 
 export type ModelOption = {
   id: string;
@@ -90,8 +91,20 @@ export type IndexedChunk = EpisodeChunk & {
 };
 
 export type ArtifactManifest = {
+  schemaVersion?: number;
   exportedAt: string;
   episodeCount: number;
   chunkCount: number;
+  embeddingProvider?: EmbeddingProvider;
+  embeddingModel?: string;
   embeddingDimensions: number;
+  chunkFiles?: string[];
+  expectedEpisodeCount?: number;
+  skippedCount?: number;
+  failedCount?: number;
+  source?: {
+    name: string;
+    url?: string;
+    fetchedAt?: string;
+  };
 };

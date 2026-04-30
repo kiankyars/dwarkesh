@@ -1,4 +1,4 @@
-import { embedQueryText } from "@/lib/ai/providers";
+import { embedQueryText, getArtifactEmbeddingConfig } from "@/lib/ai/providers";
 import { loadArtifactStore, tokenize } from "@/lib/artifacts/store";
 import { DEFAULT_CHAT_CONTEXT_LIMIT, DEFAULT_SEARCH_LIMIT } from "@/lib/config";
 import type { RetrievedChunk } from "@/lib/types";
@@ -6,7 +6,8 @@ import type { RetrievedChunk } from "@/lib/types";
 const RRF_K = 60;
 
 export async function retrieveChunks(query: string, limit = DEFAULT_SEARCH_LIMIT) {
-  const [store, embedding] = await Promise.all([loadArtifactStore(), embedQueryText(query)]);
+  const store = await loadArtifactStore();
+  const embedding = await embedQueryText(query, getArtifactEmbeddingConfig(store.manifest));
   const semantic = scoreSemantic(query, embedding, store.searchableChunks, limit * 2);
   const lexical = scoreLexical(query, store, limit * 2);
 

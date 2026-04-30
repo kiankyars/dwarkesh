@@ -41,5 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 # generated retrieval artifacts
+/data/artifacts/.ingest-checkpoints/
 /data/artifacts/snapshots/*
 !/data/artifacts/snapshots/.gitkeep

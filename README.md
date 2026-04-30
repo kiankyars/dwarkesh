@@ -10,7 +10,7 @@ This repo now has two roles:
 The root app owns:
 
 - transcript discovery and parsing
-- Gemini embeddings via `gemini-embedding-2-preview`
+- OpenRouter embeddings via `nvidia/llama-nemotron-embed-vl-1b-v2:free` for future reindexes
 - artifact-backed retrieval from [`data/artifacts/current`](/Users/kian/Developer/dwarkesh/data/artifacts/current)
 - `POST /api/rag/context` for private LibreChat grounding
 - `GET /api/search?q=` for retrieval diagnostics
@@ -24,15 +24,21 @@ Local bring-up:
 4. Run `npm run ingest:backfill`.
 5. Start the backend with `npm run dev`.
 
+The checked-in artifact records the embedding provider and model it was built with. Retrieval uses that manifest metadata for query embeddings, so a Gemini-built artifact remains query-compatible until you regenerate it with the OpenRouter embedding model.
+
 Useful commands:
 
 - `npm run ingest`
 - `npm run ingest:backfill`
+- `npm run artifact:audit`
 - `npm run artifact:export`
+- `npm test`
 - `npm run lint`
 - `npm run build`
 
 The Render service config is in [render.yaml](/Users/kian/Developer/dwarkesh/render.yaml). Artifact refreshes still run through [`.github/workflows/reindex.yml`](/Users/kian/Developer/dwarkesh/.github/workflows/reindex.yml).
+
+Ingestion uses Dwarkesh's public Substack archive and post-detail APIs as the source of truth. Podcast posts that do not expose a public transcript are reported in the ingest summary and skipped because they cannot be transcript-grounded.
 
 ## Public frontend
 

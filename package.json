@@ -7,9 +7,11 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
-    "ingest": "tsx src/scripts/ingest.ts",
-    "ingest:backfill": "tsx src/scripts/ingest.ts --mode=backfill",
-    "artifact:export": "tsx src/scripts/export-artifact.ts"
+    "test": "node --import tsx --test 'src/**/*.test.ts'",
+    "ingest": "node --import tsx src/scripts/ingest.ts",
+    "ingest:backfill": "node --import tsx src/scripts/ingest.ts --mode=backfill",
+    "artifact:audit": "node --import tsx src/scripts/audit-artifact.ts",
+    "artifact:export": "node --import tsx src/scripts/export-artifact.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.53",
