@@ -157,10 +157,12 @@ function isOpenRouterEndpoint(name, baseURL) {
 function isOpenRouterFreeTextModel(model) {
   const promptIsFree = model?.pricing?.prompt === '0';
   const completionIsFree = model?.pricing?.completion === '0';
-  const acceptsText = model?.architecture?.input_modalities?.includes('text') ?? false;
-  const outputsText = model?.architecture?.output_modalities?.includes('text') ?? false;
+  const inputModalities = model?.architecture?.input_modalities ?? [];
+  const outputModalities = model?.architecture?.output_modalities ?? [];
+  const acceptsText = inputModalities.includes('text');
+  const outputsOnlyText = outputModalities.length === 1 && outputModalities.includes('text');
 
-  return promptIsFree && completionIsFree && acceptsText && outputsText;
+  return promptIsFree && completionIsFree && acceptsText && outputsOnlyText;
 }
 
 module.exports = loadConfigModels;

@@ -26,6 +26,10 @@ if [ -z "${DOMAIN_SERVER:-}" ] && [ -n "${RENDER_EXTERNAL_HOSTNAME:-}" ]; then
   export DOMAIN_SERVER="https://${RENDER_EXTERNAL_HOSTNAME}"
 fi
 
+if [ -z "${OPENROUTER_KEY:-}" ] && [ -n "${OPENROUTER_API_KEY:-}" ]; then
+  export OPENROUTER_KEY="${OPENROUTER_API_KEY}"
+fi
+
 export HOST="${HOST:-0.0.0.0}"
 export MONGO_URI="${MONGO_URI:-mongodb://${MONGO_HOSTPORT}/LibreChat}"
 export MEILI_HOST="${MEILI_HOST:-http://${MEILI_HOSTPORT}}"

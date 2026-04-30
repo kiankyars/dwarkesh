@@ -71,7 +71,7 @@ services:
       - key: CONFIG_PATH
         value: /app/librechat.yaml
       - key: ENDPOINTS
-        value: google
+        value: google,custom
       - key: ALLOW_EMAIL_LOGIN
         value: "true"
       - key: ALLOW_REGISTRATION
@@ -83,6 +83,8 @@ services:
       - key: GOOGLE_KEY
         sync: false
       - key: OPENROUTER_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
         sync: false
       - key: JWT_SECRET
         generateValue: true

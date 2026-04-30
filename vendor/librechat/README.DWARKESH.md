@@ -7,7 +7,7 @@ This vendored LibreChat app is the public frontend for the Dwarkesh transcript R
 - all non-assistant chats call the Render backend for Dwarkesh transcript grounding before model execution
 - Google supports an admin default key plus optional per-user override via `GOOGLE_USER_PROVIDE=true`
 - OpenRouter is exposed as a custom endpoint with an admin default key plus optional per-user override
-- the OpenRouter model list is filtered to free text-capable models only
+- the OpenRouter model list is filtered to free models that accept text and return text only
 - assistant messages render a compact transcript source strip under the answer
 
 ## Bring-up
@@ -32,11 +32,14 @@ The LibreChat service starts through `scripts/start-render.sh`, which derives:
 - `MEILI_HOST` from the Meili private service host/port
 - `DWARKESH_RAG_API_BASE` from the backend private service host/port
 - `DOMAIN_CLIENT` and `DOMAIN_SERVER` from Render's external hostname when not set explicitly
+- `OPENROUTER_KEY` from `OPENROUTER_API_KEY` when only the latter is set
 
 Secrets still requiring manual entry in Render:
 
 - `GOOGLE_KEY`
-- `OPENROUTER_KEY`
+- `OPENROUTER_KEY` or `OPENROUTER_API_KEY`
+
+`ENDPOINTS` must include `google,custom`; the custom endpoint is OpenRouter.
 
 ## Required backend contract
 
