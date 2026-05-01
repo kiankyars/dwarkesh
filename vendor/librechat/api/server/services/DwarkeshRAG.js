@@ -31,9 +31,13 @@ async function fetchDwarkeshGrounding({ messages, messageId, conversationId }) {
 
   if (!response.ok) {
     const responseBody = await response.text();
+    const retryAfter = parseRetryAfter(response.headers.get('retry-after'));
     const error = new Error(`Dwarkesh RAG request failed: ${response.status}`);
     error.status = response.status;
     error.responseBody = responseBody;
+    if (typeof retryAfter === 'number') {
+      error.retryAfter = retryAfter;
+    }
     throw error;
   }
 
@@ -106,6 +110,29 @@ function extractMessageText(message) {
   }
 
   return '';
+}
+
+function parseRetryAfter(retryAfterHeader) {
+  if (!retryAfterHeader) {
+    return undefined;
+  }
+
+  const parsedSeconds = Number(retryAfterHeader);
+  if (Number.isFinite(parsedSeconds) && parsedSeconds >= 0) {
+    return parsedSeconds;
+  }
+
+  const parsedDate = Date.parse(retryAfterHeader);
+  if (Number.isNaN(parsedDate)) {
+    return undefined;
+  }
+
+  const millisecondsUntilRetry = parsedDate - Date.now();
+  if (millisecondsUntilRetry <= 0) {
+    return 0;
+  }
+
+  return Math.ceil(millisecondsUntilRetry / 1000);
 }
 
 function buildSearchAttachment({ sources, messageId, conversationId }) {

@@ -346,11 +346,25 @@ class AgentClient extends BaseClient {
       sharedRunContextParts.push(memoryContext);
     }
 
-    const dwarkeshGrounding = await fetchDwarkeshGrounding({
-      messages: orderedMessages,
-      messageId: this.responseMessageId,
-      conversationId: this.conversationId,
-    });
+    let dwarkeshGrounding = null;
+    try {
+      dwarkeshGrounding = await fetchDwarkeshGrounding({
+        messages: orderedMessages,
+        messageId: this.responseMessageId,
+        conversationId: this.conversationId,
+      });
+    } catch (error) {
+      if (error?.status === 429) {
+        logger.warn('[DwarkeshRAG] Rate limit reached, continuing without grounding context', {
+          messageId: this.responseMessageId,
+          conversationId: this.conversationId,
+          status: error.status,
+          retryAfter: error?.retryAfter,
+        });
+      } else {
+        throw error;
+      }
+    }
     if (dwarkeshGrounding?.injectedSystemText) {
       sharedRunContextParts.push(dwarkeshGrounding.injectedSystemText);
     }

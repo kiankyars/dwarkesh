@@ -48,13 +48,39 @@ export function linkDwarkeshCitations(content = '', sources: DwarkeshSource[]) {
     return content;
   }
 
-  const sourceMap = new Map(sources.map((source) => [source.label, source.link]));
-  return content.replace(/\[(S\d+)\](?!\()/g, (match, label) => {
-    const link = sourceMap.get(label);
-    if (!link) {
-      return match;
+  const sourceMap = new Map(sources.map((source) => [source.label, source]));
+  const usedLabels: string[] = [];
+  const seen = new Set<string>();
+
+  const cleanedContent = content.replace(/\[(S\d+)\](?!\()/g, (_match, label) => {
+    const source = sourceMap.get(label);
+    if (!source) {
+      return '';
     }
 
-    return `[${label}](${link})`;
+    if (!seen.has(label)) {
+      usedLabels.push(label);
+      seen.add(label);
+    }
+
+    return '';
   });
+
+  const usedSources = usedLabels
+    .map((label) => {
+      const source = sourceMap.get(label);
+      if (!source) {
+        return null;
+      }
+
+      const safeTitle = source.title.replace(/\[|\]/g, '');
+      return `[${label}: ${safeTitle}](${source.link})`;
+    })
+    .filter((source): source is string => Boolean(source));
+
+  if (usedSources.length === 0) {
+    return cleanedContent;
+  }
+
+  return `${cleanedContent}\n\n**Transcript sources used:** ${usedSources.join(' • ')}`;
 }

@@ -68,7 +68,9 @@ function buildInjectedSystemText(blocks: string[]) {
   return [
     "You answer questions only from the Dwarkesh Patel podcast transcript archive.",
     "Use only the transcript evidence below.",
-    "Cite supporting evidence inline with labels like [S1] and [S2].",
+    "Do not include bracket-style citation markers like [S1] in the body text.",
+    "Answer naturally and directly from the provided evidence.",
+    "When helpful, refer to episode context in plain language (for example, by mentioning the topic or guest).",
     "If the evidence is insufficient or conflicting, say so plainly.",
     "",
     "Transcript evidence:",
