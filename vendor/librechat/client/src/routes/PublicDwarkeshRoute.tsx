@@ -37,7 +37,7 @@ type PublicChatResponse = {
   details?: string;
 };
 
-const DEFAULT_PUBLIC_MODEL = 'gemini:gemini-3.1-flash-lite-preview';
+const DEFAULT_PUBLIC_MODEL = 'gemini:gemini-3.1-flash-lite';
 
 export default function PublicDwarkeshRoute() {
   const { data: startupConfig } = useGetStartupConfig();

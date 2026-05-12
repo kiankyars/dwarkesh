@@ -6,12 +6,12 @@ export const DWARKESH_POST_API_URL = `${DWARKESH_SITE_URL}/api/v1/posts`;
 
 export const GEMINI_CHAT_MODELS = [
   {
-    id: "gemini:gemini-3.1-flash-lite-preview",
-    rawId: "gemini-3.1-flash-lite-preview",
-    label: "Gemini 3.1 Flash Lite Preview",
+    id: "gemini:gemini-3.1-flash-lite",
+    rawId: "gemini-3.1-flash-lite",
+    label: "Gemini 3.1 Flash Lite",
     family: "Gemini",
     provider: "gemini" as const,
-    description: "Fast Gemini preview model.",
+    description: "Fast Gemini model.",
   },
   {
     id: "gemini:gemini-3-flash-preview",

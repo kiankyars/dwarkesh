@@ -44,7 +44,7 @@ Ingestion uses Dwarkesh's public Substack archive and post-detail APIs as the so
 
 The public app is the patched LibreChat deployment in [`vendor/librechat`](/Users/kian/Developer/dwarkesh/vendor/librechat). It uses:
 
-- fixed Gemini chat models, with `gemini-3.1-flash-lite-preview` first
+- fixed Gemini chat models, with `gemini-3.1-flash-lite` first
 - all free OpenRouter models that accept text and return text only
 - global Dwarkesh transcript grounding on every non-assistant chat
 - raw upstream provider errors surfaced directly to the user
