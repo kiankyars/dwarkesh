@@ -79,7 +79,7 @@ services:
       - key: GOOGLE_USER_PROVIDE
         value: "true"
       - key: GOOGLE_MODELS
-        value: gemini-3.1-flash-lite,gemini-3-flash-preview,gemini-2.5-flash,gemini-2.5-flash-lite
+        value: gemini-3.5-flash,gemini-3.1-flash-lite,gemini-3-flash-preview,gemini-2.5-flash,gemini-2.5-flash-lite
       - key: GOOGLE_KEY
         sync: false
       - key: OPENROUTER_KEY
